@@ -42,7 +42,7 @@ function clamp_zero!(w::AbstractVector{T}) where T
 	end
 end
 
-function updateHALS!(W::AbstractMatrix{T}, XHT::AbstractMatrix{T}, HHT::AbstractMatrix{T}, alpha::Float64) where T
+function updateHALS!(W::AbstractMatrix{T}, X::AbstractMatrix{T}, HT::AbstractMatrix{T}, HHT::AbstractMatrix{T}, alpha::Float64) where T
 	if alpha > 0.0
 		@inbounds for i in 1:k
 			HHT[i,i] += alpha
@@ -54,7 +54,7 @@ function updateHALS!(W::AbstractMatrix{T}, XHT::AbstractMatrix{T}, HHT::Abstract
 
 	@inbounds for j in 1:k
 		hess = max(1e-10, HHT[j,j])
-		grad = W * HHT[:,j] - XHT[:,j]
+		grad = W * HHT[:,j] - X * HT[:,j]
 
 		w = @view W[:,j]
 		norm += projected_grad_norm(w, grad)
@@ -71,8 +71,8 @@ function nmf(X::AbstractMatrix{T}, k::Int; tol=1e-4, maxiter=200, alpha=0.0) whe
 
 	m, n = size(X)
 	WTW = HHT = Matrix{T}(undef, k ,k)
-	XHT = Matrix{T}(undef, m, k)
-	XTW = Matrix{T}(undef, n, k)
+#	XHT = Matrix{T}(undef, m, k)
+#	XTW = Matrix{T}(undef, n, k)
 
 	HT = transpose(H)
 	WT = transpose(W)
@@ -86,13 +86,13 @@ function nmf(X::AbstractMatrix{T}, k::Int; tol=1e-4, maxiter=200, alpha=0.0) whe
 
 		# updateW
 		mul!(HHT, H, HT)
-		mul!(XHT, X, HT)
-		norm += updateHALS!(W, XHT, HHT, alpha)
+#		mul!(XHT, X, HT)
+		norm += updateHALS!(W, X, HT, HHT, alpha)
 
 		# updateH
 		mul!(WTW, WT, W)
-		mul!(XTW, XT, W)
-		norm += updateHALS!(HT, XTW, WTW, alpha)
+#		mul!(XTW, XT, W)
+		norm += updateHALS!(HT, XT, W, WTW, alpha)
 
 		if iter == 1
 			norm0 = norm
