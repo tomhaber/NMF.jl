@@ -65,7 +65,7 @@ function updateHALS!(W::AbstractMatrix{T}, X::AbstractMatrix{T}, HT::AbstractMat
 	norm
 end
 
-function nmf(X::AbstractMatrix{T}, k::Int; tol=1e-4, maxiter=200, alpha=0.0) where T
+function nmf(X::AbstractMatrix{T}, k::Int; tol=1e-4, maxiter=200, alphaW=0.0, alphaH=0.0) where T
 	seed!(1234)
 	W, H = initialize_nmf(X, k)
 
@@ -87,12 +87,12 @@ function nmf(X::AbstractMatrix{T}, k::Int; tol=1e-4, maxiter=200, alpha=0.0) whe
 		# updateW
 		mul!(HHT, H, HT)
 #		mul!(XHT, X, HT)
-		norm += updateHALS!(W, X, HT, HHT, alpha)
+		norm += updateHALS!(W, X, HT, HHT, alphaW)
 
 		# updateH
 		mul!(WTW, WT, W)
 #		mul!(XTW, XT, W)
-		norm += updateHALS!(HT, XT, W, WTW, alpha)
+		norm += updateHALS!(HT, XT, W, WTW, alphaH)
 
 		if iter == 1
 			norm0 = norm
