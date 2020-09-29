@@ -1,6 +1,6 @@
 import Statistics: mean
 import Random: randn, seed!
-import LinearAlgebra: diagind, axpy!
+import LinearAlgebra: diagind, axpy!, mul!
 
 # Cichocki, Andrzej, and Phan, Anh-Huy. "Fast local algorithms for large scale nonnegative matrix and tensor factorizations.",
 # IEICE transactions on fundamentals of electronics, communications and computer sciences 92.3: 708-721, 2009.
@@ -42,7 +42,7 @@ function clamp_zero!(w::AbstractVector{T}) where T
 	end
 end
 
-function updateHALS!(W::AbstractMatrix{T}, X::AbstractMatrix{T}, HT::AbstractMatrix{T}, HHT::AbstractMatrix{T}, alpha::Float64) where T
+function updateHALS!(grad::AbstractVector{T}, W::AbstractMatrix{T}, X::AbstractMatrix{T}, HT::AbstractMatrix{T}, HHT::AbstractMatrix{T}, alpha::Float64) where T
 	if alpha > 0.0
 		@inbounds for i in 1:k
 			HHT[i,i] += alpha
@@ -54,7 +54,10 @@ function updateHALS!(W::AbstractMatrix{T}, X::AbstractMatrix{T}, HT::AbstractMat
 
 	@inbounds for j in 1:k
 		hess = max(1e-10, HHT[j,j])
-		grad = W * HHT[:,j] - X * HT[:,j]
+
+#		grad = W * HHT[:,j] - X * HT[:,j]
+		mul!(grad, W, HHT[:,j])
+		mul!(grad, X, HT[:,j], -1.0, 1.0)
 
 		w = @view W[:,j]
 		norm += projected_grad_norm(w, grad)
@@ -71,8 +74,8 @@ function nmf(X::AbstractMatrix{T}, k::Int; tol=1e-4, maxiter=200, alphaW=0.0, al
 
 	m, n = size(X)
 	WTW = HHT = Matrix{T}(undef, k ,k)
-#	XHT = Matrix{T}(undef, m, k)
-#	XTW = Matrix{T}(undef, n, k)
+	gW = Vector{T}(undef, m)
+	gH = Vector{T}(undef, n)
 
 	HT = transpose(H)
 	WT = transpose(W)
@@ -86,13 +89,11 @@ function nmf(X::AbstractMatrix{T}, k::Int; tol=1e-4, maxiter=200, alphaW=0.0, al
 
 		# updateW
 		mul!(HHT, H, HT)
-#		mul!(XHT, X, HT)
-		norm += updateHALS!(W, X, HT, HHT, alphaW)
+		norm += updateHALS!(gW, W, X, HT, HHT, alphaW)
 
 		# updateH
 		mul!(WTW, WT, W)
-#		mul!(XTW, XT, W)
-		norm += updateHALS!(HT, XT, W, WTW, alphaH)
+		norm += updateHALS!(gH, HT, XT, W, WTW, alphaH)
 
 		if iter == 1
 			norm0 = norm
