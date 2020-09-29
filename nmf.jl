@@ -42,33 +42,34 @@ function clamp_zero!(w::AbstractVector{T}) where T
 	end
 end
 
-function updateHALS!(grad::AbstractVector{T}, W::AbstractMatrix{T}, X::AbstractMatrix{T}, HT::AbstractMatrix{T}, HHT::AbstractMatrix{T}, alpha::Float64) where T
-	if alpha > 0.0
-		@inbounds for i in 1:k
-			HHT[i,i] += alpha
-		end
-	end
-
+function updateHALS!(grad::AbstractVector{T}, W::AbstractMatrix{T}, X::AbstractMatrix{T}, HT::AbstractMatrix{T}, HHT::AbstractMatrix{T}, alpha::Tuple{Float64, Float64}) where T
 	n, k = size(W)
 	norm = zero(T)
+
+	if alpha[2] > 0.0
+		@inbounds for i in 1:k
+			HHT[i,i] += alpha[2]
+		end
+	end
 
 	@inbounds for j in 1:k
 		hess = max(1e-10, HHT[j,j])
 
-#		grad = W * HHT[:,j] - X * HT[:,j]
-		mul!(grad, W, HHT[:,j])
-		mul!(grad, X, HT[:,j], -1.0, 1.0)
+#		grad = X*HT[:,j] - W * HHT[:,j]
+		mul!(grad, X, HT[:,j])
+		grad .-= alpha[1]
+		mul!(grad, W, view(HHT,:,j), -1.0, 1.0)
 
 		w = @view W[:,j]
 		norm += projected_grad_norm(w, grad)
-		axpy!(-1/hess, grad, w)
+		axpy!(1/hess, grad, w)
 		clamp_zero!(w)
 	end
 
 	norm
 end
 
-function nmf(X::AbstractMatrix{T}, k::Int; tol=1e-4, maxiter=200, alphaW=0.0, alphaH=0.0) where T
+function nmf(X::AbstractMatrix{T}, k::Int; tol=1e-4, maxiter=200, alphaW::Tuple{Float64, Float64}=(0.0,0.0), alphaH::Tuple{Float64, Float64}=(0.0,0.0)) where T
 	seed!(1234)
 	W, H = initialize_nmf(X, k)
 
