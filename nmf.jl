@@ -1,6 +1,7 @@
 import Statistics: mean
 import Random: randn, seed!
-import LinearAlgebra: diagind, axpy!, mul!
+import LinearAlgebra: axpy!, mul!, dot, norm
+import SparseArrays: AbstractSparseMatrix, nonzeros, rowvals, nzrange
 
 # Cichocki, Andrzej, and Phan, Anh-Huy. "Fast local algorithms for large scale nonnegative matrix and tensor factorizations.",
 # IEICE transactions on fundamentals of electronics, communications and computer sciences 92.3: 708-721, 2009.
@@ -42,6 +43,21 @@ function clamp_zero!(w::AbstractVector{T}) where T
 	end
 end
 
+objective(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix) = norm(X .- W*H)
+function objective(X::AbstractSparseMatrix{T}, W::AbstractMatrix{T}, H::AbstractMatrix{T}) where T
+	norm = zero(T)
+
+	for col in 1:size(X, 2)
+		for i in nzrange(X, col)
+			row = rowvals(X)[i]
+			val = nonzeros(X)[i]
+			norm += (val - dot(view(W,row,:), view(H,:,col)))^2
+		end
+	end
+
+	sqrt(norm)
+end
+
 function updateHALS!(grad::AbstractVector{T}, W::AbstractMatrix{T}, X::AbstractMatrix{T}, HT::AbstractMatrix{T}, HHT::AbstractMatrix{T}, alpha::Tuple{Float64, Float64}) where T
 	n, k = size(W)
 	norm = zero(T)
@@ -68,6 +84,11 @@ function updateHALS!(grad::AbstractVector{T}, W::AbstractMatrix{T}, X::AbstractM
 
 	norm
 end
+
+# W[:,j] - (X*HT[:,j] - W * HHT[:,]) / HHT[j,j]
+# HT[:,j] - (XT * W[:,j] - HT * WTW[:,j]) / WTW[j,j]
+
+# H'V'VH
 
 function nmf(X::AbstractMatrix{T}, k::Int; tol=1e-4, maxiter=200, alphaW::Tuple{Float64, Float64}=(0.0,0.0), alphaH::Tuple{Float64, Float64}=(0.0,0.0)) where T
 	seed!(1234)
