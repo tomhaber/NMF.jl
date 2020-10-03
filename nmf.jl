@@ -13,10 +13,10 @@ function initialize_nmf(X::AbstractMatrix{T}, k::Int) where T
 	W = abs.(avg * randn(T, m, k))
 	H = abs.(avg * randn(T, k, n))
 
-	for i in 1:k
-		x = @view W[:,i]
-		x ./= sum(x)
-	end
+#	for i in 1:k
+#		x = @view W[:,i]
+#		x ./= sum(x)
+#	end
 
 	W, H
 end
@@ -44,6 +44,7 @@ function clamp_zero!(w::AbstractVector{T}) where T
 end
 
 objective(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix) = norm(X .- W*H)
+#=
 function objective(X::AbstractSparseMatrix{T}, W::AbstractMatrix{T}, H::AbstractMatrix{T}) where T
 	norm = zero(T)
 
@@ -57,6 +58,7 @@ function objective(X::AbstractSparseMatrix{T}, W::AbstractMatrix{T}, H::Abstract
 
 	sqrt(norm)
 end
+=#
 
 function updateHALS!(grad::AbstractVector{T}, W::AbstractMatrix{T}, X::AbstractMatrix{T}, HT::AbstractMatrix{T}, HHT::AbstractMatrix{T}, alpha::Tuple{Float64, Float64}) where T
 	n, k = size(W)
@@ -91,7 +93,6 @@ end
 # H'V'VH
 
 function nmf(X::AbstractMatrix{T}, k::Int; tol=1e-4, maxiter=200, alphaW::Tuple{Float64, Float64}=(0.0,0.0), alphaH::Tuple{Float64, Float64}=(0.0,0.0)) where T
-	seed!(1234)
 	W, H = initialize_nmf(X, k)
 
 	m, n = size(X)
@@ -121,11 +122,11 @@ function nmf(X::AbstractMatrix{T}, k::Int; tol=1e-4, maxiter=200, alphaW::Tuple{
 			norm0 = norm
 		end
 
-#println("$(LinearAlgebra.norm(X .- W*H)) $norm $norm0")
+		println("$(objective(X, W, H)) $norm $norm0")
 		converged = norm / norm0 < tol
 		iter += 1
 	end
 
-	converged || error("failed to converge in $maxiter iterations")
+	converged || @warn "failed to converge in $maxiter iterations"
 	W, H
 end
