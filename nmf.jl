@@ -43,22 +43,7 @@ function clamp_zero!(w::AbstractVector{T}) where T
 	end
 end
 
-objective(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix) = norm(X .- W*H)
-#=
-function objective(X::AbstractSparseMatrix{T}, W::AbstractMatrix{T}, H::AbstractMatrix{T}) where T
-	norm = zero(T)
-
-	for col in 1:size(X, 2)
-		for i in nzrange(X, col)
-			row = rowvals(X)[i]
-			val = nonzeros(X)[i]
-			norm += (val - dot(view(W,row,:), view(H,:,col)))^2
-		end
-	end
-
-	sqrt(norm)
-end
-=#
+#objective(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix) = norm(X .- W*H)
 
 function updateHALS!(grad::AbstractVector{T}, W::AbstractMatrix{T}, X::AbstractMatrix{T}, HT::AbstractMatrix{T}, HHT::AbstractMatrix{T}, alpha::Tuple{Float64, Float64}) where T
 	n, k = size(W)
@@ -122,7 +107,6 @@ function nmf(X::AbstractMatrix{T}, k::Int; tol=1e-4, maxiter=200, alphaW::Tuple{
 			norm0 = norm
 		end
 
-		println("$(objective(X, W, H)) $norm $norm0")
 		converged = norm / norm0 < tol
 		iter += 1
 	end
