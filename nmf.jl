@@ -1,7 +1,3 @@
-import Statistics: mean
-import Random: randn, seed!
-import LinearAlgebra: axpy!, mul!, dot, norm
-
 # Cichocki, Andrzej, and Phan, Anh-Huy. "Fast local algorithms for large scale nonnegative matrix and tensor factorizations.",
 # IEICE transactions on fundamentals of electronics, communications and computer sciences 92.3: 708-721, 2009.
 
@@ -10,36 +6,14 @@ function initialize_nmf(X::AbstractMatrix{T}, k::Int) where T
 
 	avg = sqrt(mean(X) / k)
 	W = abs.(avg * randn(T, m, k))
-	H = abs.(avg * randn(T, k, n))
+	HT = abs.(avg * randn(T, n, k))
 
 #	for i in 1:k
 #		x = @view W[:,i]
 #		x ./= sum(x)
 #	end
 
-	W, H
-end
-
-function projected_grad_norm(w::AbstractVector{T}, g::AbstractVector{T}) where T
-	norm = zero(T)
-
-	@inbounds for i = 1:length(w)
-		pg = if iszero(w[i])
-			min(zero(T), g[i])
-		else
-			g[i]
-		end
-
-		norm += pg^2
-	end
-
-	norm
-end
-
-function clamp_zero!(w::AbstractVector{T}) where T
-	@inbounds for i = 1:length(w)
-		w[i] = max(w[i], zero(T))
-	end
+	W, HT
 end
 
 #objective(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix) = norm(X .- W*H)
@@ -74,15 +48,14 @@ end
 # W[:,j] - (X*HT[:,j] - W * HHT[:,]) / HHT[j,j]
 # HT[:,j] - (XT * W[:,j] - HT * WTW[:,j]) / WTW[j,j]
 
-function nmf(X::AbstractMatrix{T}, k::Int; tol=1e-4, maxiter=200, alphaW::Tuple{Float64, Float64}=(0.0,0.0), alphaH::Tuple{Float64, Float64}=(0.0,0.0)) where T
-	W, H = initialize_nmf(X, k)
-
+function nmf!(W::Matrix{T}, HT::Matrix{T}, X::AbstractMatrix{T}, k::Int;
+		 tol=1e-4, maxiter=200, alphaW::L1L2{T}=zero(L1L2{T}), alphaH::L1L2{T}=zero(L1L2{T})) where T
 	m, n = size(X)
 	WTW = HHT = Matrix{T}(undef, k ,k)
 	gW = Vector{T}(undef, m)
 	gH = Vector{T}(undef, n)
 
-	HT = transpose(H)
+	H = transpose(HT)
 	WT = transpose(W)
 	XT = transpose(X)
 
@@ -113,6 +86,13 @@ function nmf(X::AbstractMatrix{T}, k::Int; tol=1e-4, maxiter=200, alphaW::Tuple{
 
 		iter += 1
 	end
+
+	converged
+end
+
+function nmf(X::AbstractMatrix{T}, k::Int; tol=1e-4, maxiter=200, alphaW::L1L2{T}=zero(L1L2{T}), alphaH::L1L2{T}=zero(L1L2{T})) where T
+	W, HT = initialize_nmf(X, k)
+	converged = nmf!(W, HT, X, k; tol=tol, maxiter=maxiter, alphaW=alphaW, alphaH=alphaH)
 
 	converged || @warn "failed to converge in $maxiter iterations"
 	W, H
