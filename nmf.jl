@@ -1,7 +1,6 @@
 import Statistics: mean
 import Random: randn, seed!
 import LinearAlgebra: axpy!, mul!, dot, norm
-import SparseArrays: AbstractSparseMatrix, nonzeros, rowvals, nzrange
 
 # Cichocki, Andrzej, and Phan, Anh-Huy. "Fast local algorithms for large scale nonnegative matrix and tensor factorizations.",
 # IEICE transactions on fundamentals of electronics, communications and computer sciences 92.3: 708-721, 2009.
@@ -75,8 +74,6 @@ end
 # W[:,j] - (X*HT[:,j] - W * HHT[:,]) / HHT[j,j]
 # HT[:,j] - (XT * W[:,j] - HT * WTW[:,j]) / WTW[j,j]
 
-# H'V'VH
-
 function nmf(X::AbstractMatrix{T}, k::Int; tol=1e-4, maxiter=200, alphaW::Tuple{Float64, Float64}=(0.0,0.0), alphaH::Tuple{Float64, Float64}=(0.0,0.0)) where T
 	W, H = initialize_nmf(X, k)
 
@@ -88,26 +85,32 @@ function nmf(X::AbstractMatrix{T}, k::Int; tol=1e-4, maxiter=200, alphaW::Tuple{
 	HT = transpose(H)
 	WT = transpose(W)
 	XT = transpose(X)
-	norm0 = zero(T)
+
+	norm_pg0 = 0.0
+	norm_pg_prev = Inf
 
 	iter = 1
 	converged = false
 	while ! converged && iter < maxiter
-		norm = zero(T)
+		norm_pg = zero(T)
 
 		# updateW
 		mul!(HHT, H, HT)
-		norm += updateHALS!(gW, W, X, HT, HHT, alphaW)
+		norm_pg += updateHALS!(gW, W, X, HT, HHT, alphaW)
 
 		# updateH
 		mul!(WTW, WT, W)
-		norm += updateHALS!(gH, HT, XT, W, WTW, alphaH)
+		norm_pg += updateHALS!(gH, HT, XT, W, WTW, alphaH)
 
 		if iter == 1
-			norm0 = norm
+			norm_pg0 = norm_pg
+		else
+			norm_pg = norm_pg / norm_pg0
 		end
 
-		converged = norm / norm0 < tol
+		converged = abs(norm_pg - norm_pg_prev) < tol
+		norm_pg_prev = norm_pg
+
 		iter += 1
 	end
 
