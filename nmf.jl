@@ -18,7 +18,7 @@ end
 
 #objective(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix) = norm(X .- W*H)
 
-function updateHALS!(grad::AbstractVector{T}, W::AbstractMatrix{T}, X::AbstractMatrix{T}, HT::AbstractMatrix{T}, HHT::AbstractMatrix{T}, alpha::Tuple{Float64, Float64}) where T
+function updateHALS!(grad::AbstractVector{T}, W::AbstractMatrix{T}, X::AbstractMatrix{T}, HT::AbstractMatrix{T}, HHT::AbstractMatrix{T}, alpha::L1L2{T}) where T
 	n, k = size(W)
 	norm = zero(T)
 
@@ -95,5 +95,5 @@ function nmf(X::AbstractMatrix{T}, k::Int; tol=1e-4, maxiter=200, alphaW::L1L2{T
 	converged = nmf!(W, HT, X, k; tol=tol, maxiter=maxiter, alphaW=alphaW, alphaH=alphaH)
 
 	converged || @warn "failed to converge in $maxiter iterations"
-	W, H
+	W, HT
 end
