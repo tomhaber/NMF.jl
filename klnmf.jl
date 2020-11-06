@@ -9,7 +9,10 @@ function objective(X::AbstractMatrix, W::AbstractMatrix, HT::AbstractMatrix)
 	llik
 end
 
-function update!(Wt::AbstractVector{T}, WHt::AbstractVector{T}, Vt::AbstractVector{T}, HT::AbstractMatrix{T}) where T
+# g = (1 .- (X ./ (WH .+ 1e-10))) * HT[:,q]
+# h = ((X ./ (WH .+ 1e-10).^2)) * HT[:,q].^2
+
+function update!(Wt::AbstractVector{T}, WHt::AbstractVector{T}, Vt::AbstractVector{S}, HT::AbstractMatrix{T}) where {T, S}
 	n, k = size(HT)
 
 	@inbounds for q in 1:k
