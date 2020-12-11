@@ -1,3 +1,6 @@
+import Statistics: mean
+import Random: randn
+
 function objective(X::AbstractMatrix, W::AbstractMatrix, HT::AbstractMatrix)
 	WH = W*HT'
 
