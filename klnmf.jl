@@ -1,5 +1,6 @@
 import Statistics: mean
 import Random: randn
+import LinearAlgebra: mul!, dot
 
 function objective(X::AbstractMatrix, W::AbstractMatrix, HT::AbstractMatrix)
 	WH = W*HT'
@@ -12,8 +13,97 @@ function objective(X::AbstractMatrix, W::AbstractMatrix, HT::AbstractMatrix)
 	llik
 end
 
-# g = (1 .- (X ./ (WH .+ 1e-10))) * HT[:,q]
+# g = sum(HT[:,q]) .- (X ./ (WH .+ 1e-10)) * HT[:,q]
 # h = ((X ./ (WH .+ 1e-10).^2)) * HT[:,q].^2
+
+# g = sum(W[:,q]) .- (X' ./ (WH' .+ 1e-10)) * W[:,q]
+# h = ((X' ./ (WH' .+ 1e-10).^2)) * W[:,q].^2
+
+
+#=
+\begin{align*}
+\partial H_{i,q}^{T} = \sum_j \left( W_{j,q} - \frac{X_{j,i} W_{j,q}}{\sum_k W_{j,k} H_{i,k}^{T}} \right)\\
+\partial^2 H_{i,q}^{T} = \sum_j \frac{X_{j,i} W_{j,q}^2}{(\sum_k W_{j,k} H_{i,k}^{T})^2}
+\end{align*}
+=#
+
+function gradW!(gh::Matrix{T}, q::Int, X::SparseMatrixCSC{S}, W::AbstractMatrix{T}, HT::AbstractMatrix{T}) where {T,S}
+	m,n = size(X)
+	k = size(W,2)
+
+	nzv = nonzeros(X)
+	rv = rowvals(X)
+
+	fill!(gh, zero(T))
+	gh[:,1] .= sum(HT[:,q])
+
+	@inbounds for j = 1:n
+		xj = HT[j,q]
+		for idx in nzrange(X,j)
+			v, i = nzv[idx], rv[idx]
+			WHij = dot(W[i,:], HT[j,:]) + eps()
+
+			gh[i, 1] -= (v / WHij) * xj
+			gh[i, 2] += (v / WHij^2) * xj^2
+		end
+	end
+	gh
+end
+
+function gradH!(gh::Matrix{T}, q::Int, X::SparseMatrixCSC{S}, W::AbstractMatrix{T}, HT::AbstractMatrix{T}) where {T,S}
+	m,n = size(X)
+	k = size(W,2)
+
+	nzv = nonzeros(X)
+	rv = rowvals(X)
+
+	s = sum(W[:,q])
+	@inbounds for j = 1:n
+		tmp_g = zero(T)
+		tmp_h = zero(T)
+		for idx in nzrange(X,j)
+			v, i = nzv[idx], rv[idx]
+			WHij = dot(W[i,:], HT[j,:]) + eps()
+
+			tmp_g += (v / WHij) * W[i,q]
+			tmp_h += (v / WHij^2) * W[i,q]^2
+		end
+		gh[j,1] = s - tmp_g
+		gh[j,2] = tmp_h
+	end
+	gh
+end
+
+function klnmf!(W::AbstractMatrix{T}, HT::AbstractMatrix{T}, X::AbstractMatrix{S}; tol=1e-4, maxiter=200, maxinner=2) where {T,S}
+	m, n = size(X)
+	ghW = Matrix{T}(undef, m, 2)
+	ghH = Matrix{T}(undef, n, 2)
+
+	iter = 1
+	converged = false
+	while ! converged && iter < maxiter
+		# updateW
+		@inbounds for q in 1:k
+			for inner in 1:maxinner
+				gradW!(ghW, q, X, W, HT)
+				ghW[:,1] ./= ghW[:,2]
+			end
+		end
+
+		# updateH
+		@inbounds for q in 1:k
+			for inner in 1:maxinner
+				gradH!(ghH, q, X, W, HT)
+				ghH[:,1] ./= ghH[:,2]
+			end
+		end
+
+		converged = false
+		iter += 1
+	end
+
+	converged
+end
 
 function update!(Wt::AbstractVector{T}, WHt::AbstractVector{T}, Vt::AbstractVector{S}, HT::AbstractMatrix{T}) where {T, S}
 	n, k = size(HT)
