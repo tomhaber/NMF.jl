@@ -5,12 +5,13 @@ import LinearAlgebra: mul!, dot
 function objective(X::AbstractMatrix, W::AbstractMatrix, HT::AbstractMatrix)
 	WH = W*HT'
 
-	llik = 0.0
+	obj = 0.0
 	@inbounds for i in eachindex(X)
-		llik += X[i]*log((X[i]+1e-5)/(WH[i]+1e-15))-X[i]+WH[i];
+		obj += X[i]*log(X[i]+1e-5) - X[i]
+		obj -= X[i]*log(WH[i]+1e-15) - WH[i]
 	end
 
-	llik
+	obj
 end
 
 # g = sum(HT[:,q]) .- (X ./ (WH .+ 1e-10)) * HT[:,q]
@@ -27,7 +28,7 @@ end
 \end{align*}
 =#
 
-function gradW!(gh::Matrix{T}, q::Int, X::SparseMatrixCSC{S}, W::AbstractMatrix{T}, HT::AbstractMatrix{T}) where {T,S}
+function updateW!(gh::Matrix{T}, q::Int, X::SparseMatrixCSC{S}, W::AbstractMatrix{T}, HT::AbstractMatrix{T}) where {T,S}
 	m,n = size(X)
 	k = size(W,2)
 
@@ -47,10 +48,19 @@ function gradW!(gh::Matrix{T}, q::Int, X::SparseMatrixCSC{S}, W::AbstractMatrix{
 			gh[i, 2] += (v / WHij^2) * xj^2
 		end
 	end
-	gh
+
+	converged = true
+	@inbounds for i = 1:m
+		delta_i = -gh[i,1] / gh[i,2]
+		newW = clamp(W[i,q] + delta_i, eps(), Inf)
+		converged &= (abs(newW - W[i,q]) < abs(W[i,q])*0.5)
+		W[i,q] = newW
+	end
+
+	converged
 end
 
-function gradH!(gh::Matrix{T}, q::Int, X::SparseMatrixCSC{S}, W::AbstractMatrix{T}, HT::AbstractMatrix{T}) where {T,S}
+function updateH!(q::Int, X::SparseMatrixCSC{S}, W::AbstractMatrix{T}, HT::AbstractMatrix{T}) where {T,S}
 	m,n = size(X)
 	k = size(W,2)
 
@@ -58,6 +68,7 @@ function gradH!(gh::Matrix{T}, q::Int, X::SparseMatrixCSC{S}, W::AbstractMatrix{
 	rv = rowvals(X)
 
 	s = sum(W[:,q])
+	converged = true
 	@inbounds for j = 1:n
 		tmp_g = zero(T)
 		tmp_h = zero(T)
@@ -68,16 +79,19 @@ function gradH!(gh::Matrix{T}, q::Int, X::SparseMatrixCSC{S}, W::AbstractMatrix{
 			tmp_g += (v / WHij) * W[i,q]
 			tmp_h += (v / WHij^2) * W[i,q]^2
 		end
-		gh[j,1] = s - tmp_g
-		gh[j,2] = tmp_h
+
+		delta_j = (tmp_g - s) / tmp_h
+		newH = clamp(HT[j,q] + delta_j, eps(), Inf)
+		converged &= (abs(newH - HT[j,q]) < abs(HT[j,q])*0.5)
+		HT[j,q] = newH
 	end
-	gh
+
+	converged
 end
 
 function klnmf!(W::AbstractMatrix{T}, HT::AbstractMatrix{T}, X::AbstractMatrix{S}; tol=1e-4, maxiter=200, maxinner=2) where {T,S}
 	m, n = size(X)
-	ghW = Matrix{T}(undef, m, 2)
-	ghH = Matrix{T}(undef, n, 2)
+	gh = Matrix{T}(undef, m, 2)
 
 	iter = 1
 	converged = false
@@ -85,16 +99,14 @@ function klnmf!(W::AbstractMatrix{T}, HT::AbstractMatrix{T}, X::AbstractMatrix{S
 		# updateW
 		@inbounds for q in 1:k
 			for inner in 1:maxinner
-				gradW!(ghW, q, X, W, HT)
-				ghW[:,1] ./= ghW[:,2]
+				updateW!(gh, q, X, W, HT) && break
 			end
 		end
 
 		# updateH
 		@inbounds for q in 1:k
 			for inner in 1:maxinner
-				gradH!(ghH, q, X, W, HT)
-				ghH[:,1] ./= ghH[:,2]
+				updateH!(q, X, W, HT) && break
 			end
 		end
 
@@ -140,7 +152,7 @@ function update!(Wt::AbstractVector{T}, WHt::AbstractVector{T}, Vt::AbstractVect
 	end
 end
 
-function klnmf!(W::AbstractMatrix{T}, HT::AbstractMatrix{T}, X::AbstractMatrix{S}; tol=1e-4, maxiter=200) where {T,S}
+function klnmf_old!(W::AbstractMatrix{T}, HT::AbstractMatrix{T}, X::AbstractMatrix{S}; tol=1e-4, maxiter=200) where {T,S}
 	m, n = size(X)
 	WH = Matrix{T}(undef, m ,n)
 	WHT = Vector{T}(undef, m)
