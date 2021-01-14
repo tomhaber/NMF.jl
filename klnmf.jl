@@ -2,8 +2,8 @@ import Statistics: mean
 import Random: randn
 import LinearAlgebra: mul!, dot
 
-function objective(X::AbstractMatrix, W::AbstractMatrix, HT::AbstractMatrix)
-	WH = W*HT'
+function objective(X::AbstractMatrix, HT::AbstractMatrix, W::AbstractMatrix)
+	WH = HT'*W
 
 	obj = 0.0
 	@inbounds for i in eachindex(X)
@@ -28,21 +28,21 @@ end
 \end{align*}
 =#
 
-function updateW!(gh::Matrix{T}, q::Int, X::SparseMatrixCSC{S}, W::AbstractMatrix{T}, HT::AbstractMatrix{T}) where {T,S}
+function updateH!(gh::Matrix{T}, q::Int, X::SparseMatrixCSC{S}, HT::AbstractMatrix{T}, W::AbstractMatrix{T}) where {T,S}
 	m,n = size(X)
-	k = size(W,2)
+	k = size(HT,1)
 
 	nzv = nonzeros(X)
 	rv = rowvals(X)
 
 	fill!(gh, zero(T))
-	gh[:,1] .= sum(HT[:,q])
+	gh[:,1] .= sum(W[q,:])
 
 	@inbounds for j = 1:n
-		xj = HT[j,q]
+		xj = W[q,j]
 		for idx in nzrange(X,j)
 			v, i = nzv[idx], rv[idx]
-			WHij = dot(view(W,i,:), view(HT,j,:)) + eps()
+			WHij = dot(view(HT,:,i), view(W,:,j)) + eps()
 
 			gh[i, 1] -= (v / WHij) * xj
 			gh[i, 2] += (v / WHij^2) * xj^2
@@ -52,61 +52,60 @@ function updateW!(gh::Matrix{T}, q::Int, X::SparseMatrixCSC{S}, W::AbstractMatri
 	converged = true
 	@inbounds for i = 1:m
 		delta_i = -gh[i,1] / gh[i,2]
-		newW = clamp(W[i,q] + delta_i, eps(), Inf)
-		converged &= (abs(newW - W[i,q]) < abs(W[i,q])*0.5)
-		W[i,q] = newW
+		newH = clamp(HT[q,i] + delta_i, eps(), Inf)
+		converged &= (abs(newH - HT[q,i]) < abs(HT[q,i])*0.5)
+		HT[q,i] = newH
 	end
 
 	converged
 end
 
-function updateH!(q::Int, X::SparseMatrixCSC{S}, W::AbstractMatrix{T}, HT::AbstractMatrix{T}) where {T,S}
+function updateW!(q::Int, X::SparseMatrixCSC{S}, HT::AbstractMatrix{T}, W::AbstractMatrix{T}) where {T,S}
 	m,n = size(X)
 	k = size(W,2)
 
 	nzv = nonzeros(X)
 	rv = rowvals(X)
 
-	s = sum(W[:,q])
+	s = sum(HT[q,:])
 	converged = true
 	@inbounds for j = 1:n
 		tmp_g = zero(T)
 		tmp_h = zero(T)
 		for idx in nzrange(X,j)
 			v, i = nzv[idx], rv[idx]
-			WHij = dot(view(W,i,:), view(HT,j,:)) + eps()
+			WHij = dot(view(HT,:,i), view(W,:,j)) + eps()
 
-			tmp_g += (v / WHij) * W[i,q]
-			tmp_h += (v / WHij^2) * W[i,q]^2
+			tmp_g += (v / WHij) * HT[q,i]
+			tmp_h += (v / WHij^2) * HT[q,i]^2
 		end
 
 		delta_j = (tmp_g - s) / tmp_h
-		newH = clamp(HT[j,q] + delta_j, eps(), Inf)
-		converged &= (abs(newH - HT[j,q]) < abs(HT[j,q])*0.5)
-		HT[j,q] = newH
+		newW = clamp(W[q,j] + delta_j, eps(), Inf)
+		converged &= (abs(newW - W[q,j]) < abs(W[q,j])*0.5)
+		W[q,j] = newW
 	end
 
 	converged
 end
 
-function klnmf!(W::AbstractMatrix{T}, HT::AbstractMatrix{T}, X::AbstractMatrix{S}; tol=1e-4, maxiter=200, maxinner=2) where {T,S}
+function klnmf!(HT::AbstractMatrix{T}, W::AbstractMatrix{T}, X::AbstractMatrix{S}; tol=1e-4, maxiter=200, maxinner=2) where {T,S}
 	m, n = size(X)
+	k = size(HT,1)
 	gh = Matrix{T}(undef, m, 2)
 
 	iter = 1
 	converged = false
 	while ! converged && iter < maxiter
-		# updateW
 		@inbounds for q in 1:k
 			for inner in 1:maxinner
-				updateW!(gh, q, X, W, HT) && break
+				updateH!(gh, q, X, HT, W) && break
 			end
 		end
 
-		# updateH
 		@inbounds for q in 1:k
 			for inner in 1:maxinner
-				updateH!(q, X, W, HT) && break
+				updateW!(q, X, HT, W) && break
 			end
 		end
 
@@ -189,13 +188,13 @@ end
 function klnmf(X::AbstractMatrix{T}, k::Int; tol=1e-4, maxiter=200) where T
 	m, n = size(X)
 	avg = sqrt(mean(X) / k)
-	W = abs.(avg * randn(Float64, m, k))
-	HT = abs.(avg * randn(Float64, n, k))
+	HT = abs.(avg * randn(Float64, k, m))
+	W = abs.(avg * randn(Float64, k, n))
 
-	converged = klnmf!(W, HT, X; tol=tol, maxiter=maxiter)
+	converged = klnmf!(HT, W, X; tol=tol, maxiter=maxiter)
 
 	converged || @warn "failed to converge in $maxiter iterations"
-	W, HT
+	HT, W
 end
 
 function klnmf_orig(X::AbstractMatrix, k::Int; maxiter=200, maxtime=100.)
