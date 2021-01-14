@@ -1,22 +1,26 @@
+import SparseArrays: getcolptr
 
-function objective(X::AbstractMatrix, HT::AbstractMatrix, W::AbstractMatrix)
-	WH = HT'*W
+function objective(X::SparseMatrixCSC{S}, HT::AbstractMatrix{T}, W::AbstractMatrix{T}) where {T,S}
+	m,n = size(X)
 
-	obj = 0.0
-	@inbounds for i in eachindex(X)
-		obj += X[i]*log(X[i]+1e-5) - X[i]
-		obj -= X[i]*log(WH[i]+1e-15) - WH[i]
-	end
+	nzv = nonzeros(X)
+	rv = rowvals(X)
 
-	obj
-end
+	obj = zero(T)
+	idx = getcolptr(X)[1]
+	@inbounds for j in 1:n
+		next = getcolptr(X)[j+1]
 
-# g = sum(HT[:,q]) .- (X ./ (WH .+ 1e-10)) * HT[:,q]
-# h = ((X ./ (WH .+ 1e-10).^2)) * HT[:,q].^2
+		for i in 1:m
+			WHij = dot(view(HT,:,i), view(W,:,j))
 
-# g = sum(W[:,q]) .- (X' ./ (WH' .+ 1e-10)) * W[:,q]
-# h = ((X' ./ (WH' .+ 1e-10).^2)) * W[:,q].^2
-
+			delta = if idx < next && rv[idx] == i
+				v = nzv[idx]
+				idx += 1
+				v*log(v/(WHij + eps())) - v + WHij
+			else
+				WHij
+			end
 
 			obj += delta
 		end
