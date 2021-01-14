@@ -29,7 +29,9 @@ module NMF
 	end
 
 	include("nmf.jl")
+	include("klnmf.jl")
 
 	export nmf, nmf!
+	export klnmf, klnmf!
 	export L1L2
 end

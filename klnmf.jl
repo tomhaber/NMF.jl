@@ -1,6 +1,6 @@
-import SparseArrays: getcolptr
+import SparseArrays: SparseMatrixCSC, getcolptr, nonzeros, rowvals, nzrange
 
-function objective(X::SparseMatrixCSC{S}, HT::AbstractMatrix{T}, W::AbstractMatrix{T}) where {T,S}
+function objective(X::SparseMatrixCSC{S}, HT::AbstractMatrix{T}, W::AbstractMatrix{T}, alphaH::L1L2{T}, alphaW::L1L2{T}) where {T,S}
 	m,n = size(X)
 
 	nzv = nonzeros(X)
@@ -12,23 +12,27 @@ function objective(X::SparseMatrixCSC{S}, HT::AbstractMatrix{T}, W::AbstractMatr
 		next = getcolptr(X)[j+1]
 
 		for i in 1:m
-			WHij = dot(view(HT,:,i), view(W,:,j))
+			HTi = view(HT, :, i)
+			Wj = view(W, :, j)
+			WHij = dot(HTi, Wj)
 
-			delta = if idx < next && rv[idx] == i
+			obj += alphaH[1] * norm(HTi, 1) + alphaH[2] * norm(HTi, 2)
+			obj += alphaW[1] * norm(Wj, 1) + alphaW[2] * norm(Wj, 2)
+
+			obj += if idx < next && rv[idx] == i
 				v = nzv[idx]
 				idx += 1
 				v*log(v/(WHij + eps())) - v + WHij
 			else
 				WHij
 			end
-
-			obj += delta
 		end
 	end
+
 	obj
 end
 
-function updateH!(gh::Matrix{T}, q::Int, X::SparseMatrixCSC{S}, HT::AbstractMatrix{T}, W::AbstractMatrix{T}) where {T,S}
+function updateH!(gh::Matrix{T}, q::Int, X::SparseMatrixCSC{S}, HT::AbstractMatrix{T}, W::AbstractMatrix{T}, alphaH::L1L2{T}) where {T,S}
 	m,n = size(X)
 	k = size(HT,1)
 
@@ -36,7 +40,7 @@ function updateH!(gh::Matrix{T}, q::Int, X::SparseMatrixCSC{S}, HT::AbstractMatr
 	rv = rowvals(X)
 
 	fill!(gh, zero(T))
-	gh[:,1] .= sum(W[q,:])
+	gh[:,1] .= sum(W[q,:]) + alphaH[1]*n
 
 	@inbounds for j = 1:n
 		xj = W[q,j]
@@ -51,7 +55,7 @@ function updateH!(gh::Matrix{T}, q::Int, X::SparseMatrixCSC{S}, HT::AbstractMatr
 
 	converged = true
 	@inbounds for i = 1:m
-		delta_i = -gh[i,1] / gh[i,2]
+		delta_i = -(gh[i,1] + 2n*alphaH[2]*HT[q,i]) / (gh[i,2] + 2n*alphaH[2])
 		newH = clamp(HT[q,i] + delta_i, eps(), Inf)
 		converged &= (abs(newH - HT[q,i]) < abs(HT[q,i])*0.5)
 		HT[q,i] = newH
@@ -60,14 +64,15 @@ function updateH!(gh::Matrix{T}, q::Int, X::SparseMatrixCSC{S}, HT::AbstractMatr
 	converged
 end
 
-function updateW!(q::Int, X::SparseMatrixCSC{S}, HT::AbstractMatrix{T}, W::AbstractMatrix{T}) where {T,S}
+function updateW!(q::Int, X::SparseMatrixCSC{S}, HT::AbstractMatrix{T}, W::AbstractMatrix{T}, alphaW::L1L2{T}) where {T,S}
 	m,n = size(X)
 	k = size(W,2)
 
 	nzv = nonzeros(X)
 	rv = rowvals(X)
 
-	s = sum(HT[q,:])
+	s = sum(HT[q,:]) + alphaW[1]*m
+
 	converged = true
 	@inbounds for j = 1:n
 		tmp_g = zero(T)
@@ -76,11 +81,11 @@ function updateW!(q::Int, X::SparseMatrixCSC{S}, HT::AbstractMatrix{T}, W::Abstr
 			v, i = nzv[idx], rv[idx]
 			WHij = dot(view(HT,:,i), view(W,:,j)) + eps()
 
-			tmp_g += (v / WHij) * HT[q,i]
+			tmp_g -= (v / WHij) * HT[q,i]
 			tmp_h += (v / WHij^2) * HT[q,i]^2
 		end
 
-		delta_j = (tmp_g - s) / tmp_h
+		delta_j = -(tmp_g + s + 2m*alphaW[2]*W[q,j]) / (tmp_h + 2m*alphaW[2])
 		newW = clamp(W[q,j] + delta_j, eps(), Inf)
 		converged &= (abs(newW - W[q,j]) < abs(W[q,j])*0.5)
 		W[q,j] = newW
@@ -89,23 +94,28 @@ function updateW!(q::Int, X::SparseMatrixCSC{S}, HT::AbstractMatrix{T}, W::Abstr
 	converged
 end
 
-function klnmf!(HT::AbstractMatrix{T}, W::AbstractMatrix{T}, X::AbstractMatrix{S}; tol=1e-4, maxiter=200, maxinner=2) where {T,S}
+function klnmf!(HT::AbstractMatrix{T}, W::AbstractMatrix{T}, X::AbstractMatrix{S};
+		tol=1e-4, maxiter=200, maxinner=2, alphaH::L1L2{T}=zero(L1L2{T}), alphaW::L1L2{T}=zero(L1L2{T})) where {T,S}
 	m, n = size(X)
 	k = size(HT,1)
 	gh = Matrix{T}(undef, m, 2)
+
+	println("initial obj $(objective(X, HT, W, alphaH, alphaW))")
 
 	iter = 1
 	converged = false
 	while ! converged && iter < maxiter
 		@inbounds for q in 1:k
 			for inner in 1:maxinner
-				updateH!(gh, q, X, HT, W) && break
+				updateH!(gh, q, X, HT, W, alphaH) && break
+	println("updateH obj $(objective(X, HT, W, alphaH, alphaW))")
 			end
 		end
 
 		@inbounds for q in 1:k
 			for inner in 1:maxinner
-				updateW!(q, X, HT, W) && break
+				updateW!(q, X, HT, W, alphaW) && break
+	println("updateW obj $(objective(X, HT, W, alphaH, alphaW))")
 			end
 		end
 
@@ -116,13 +126,14 @@ function klnmf!(HT::AbstractMatrix{T}, W::AbstractMatrix{T}, X::AbstractMatrix{S
 	converged
 end
 
-function klnmf(X::AbstractMatrix{T}, k::Int; tol=1e-4, maxiter=200) where T
+function klnmf(X::AbstractMatrix{S}, k::Int;
+		tol=1e-4, maxiter=200, maxinner=2, alphaH::L1L2{T}=zero(L1L2{T}), alphaW::L1L2{T}=zero(L1L2{T})) where {T,S}
 	m, n = size(X)
 	avg = sqrt(mean(X) / k)
 	HT = abs.(avg * randn(Float64, k, m))
 	W = abs.(avg * randn(Float64, k, n))
 
-	converged = klnmf!(HT, W, X; tol=tol, maxiter=maxiter)
+	converged = klnmf!(HT, W, X; tol=tol, maxiter=maxiter, maxinner=maxinner, alphaH=alphaH, alphaW=alphaW)
 
 	converged || @warn "failed to converge in $maxiter iterations"
 	HT, W
