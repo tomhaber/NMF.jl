@@ -42,7 +42,7 @@ function updateW!(gh::Matrix{T}, q::Int, X::SparseMatrixCSC{S}, W::AbstractMatri
 		xj = HT[j,q]
 		for idx in nzrange(X,j)
 			v, i = nzv[idx], rv[idx]
-			WHij = dot(W[i,:], HT[j,:]) + eps()
+			WHij = dot(view(W,i,:), view(HT,j,:)) + eps()
 
 			gh[i, 1] -= (v / WHij) * xj
 			gh[i, 2] += (v / WHij^2) * xj^2
@@ -74,7 +74,7 @@ function updateH!(q::Int, X::SparseMatrixCSC{S}, W::AbstractMatrix{T}, HT::Abstr
 		tmp_h = zero(T)
 		for idx in nzrange(X,j)
 			v, i = nzv[idx], rv[idx]
-			WHij = dot(W[i,:], HT[j,:]) + eps()
+			WHij = dot(view(W,i,:), view(HT,j,:)) + eps()
 
 			tmp_g += (v / WHij) * W[i,q]
 			tmp_h += (v / WHij^2) * W[i,q]^2
