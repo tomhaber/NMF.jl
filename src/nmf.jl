@@ -1,7 +1,7 @@
 # Cichocki, Andrzej, and Phan, Anh-Huy. "Fast local algorithms for large scale nonnegative matrix and tensor factorizations.",
 # IEICE transactions on fundamentals of electronics, communications and computer sciences 92.3: 708-721, 2009.
 
-function initialize_nmf(X::AbstractMatrix{T}, k::Int) where T
+function initialize_nmf(::Type{T}, X::AbstractMatrix, k::Int) where T
 	m,n = size(X)
 
 	avg = sqrt(mean(X) / k)
@@ -18,7 +18,7 @@ end
 
 #objective(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix) = norm(X .- W*H)
 
-function updateHALS!(grad::AbstractVector{T}, W::AbstractMatrix{T}, X::AbstractMatrix{T}, HT::AbstractMatrix{T}, HHT::AbstractMatrix{T}, alpha::L1L2{T}) where T
+function updateHALS!(grad::AbstractVector{T}, W::AbstractMatrix{T}, X::AbstractMatrix{S}, HT::AbstractMatrix{T}, HHT::AbstractMatrix{T}, alpha::L1L2{T}) where {T, S}
 	n, k = size(W)
 	norm = zero(T)
 
@@ -48,8 +48,8 @@ end
 # W[:,j] - (X*HT[:,j] - W * HHT[:,]) / HHT[j,j]
 # HT[:,j] - (XT * W[:,j] - HT * WTW[:,j]) / WTW[j,j]
 
-function nmf!(W::Matrix{T}, HT::Matrix{T}, X::AbstractMatrix{T}, k::Int;
-		 tol=1e-4, maxiter=200, alphaW::L1L2{T}=zero(L1L2{T}), alphaH::L1L2{T}=zero(L1L2{T})) where T
+function nmf!(W::Matrix{T}, HT::Matrix{T}, X::AbstractMatrix{S}, k::Int;
+		 tol=1e-4, maxiter=200, alphaW::L1L2{T}=zero(L1L2{T}), alphaH::L1L2{T}=zero(L1L2{T})) where {T, S}
 	m, n = size(X)
 	WTW = HHT = Matrix{T}(undef, k ,k)
 	gW = Vector{T}(undef, m)
@@ -90,10 +90,14 @@ function nmf!(W::Matrix{T}, HT::Matrix{T}, X::AbstractMatrix{T}, k::Int;
 	converged
 end
 
-function nmf(X::AbstractMatrix{T}, k::Int; tol=1e-4, maxiter=200, alphaW::L1L2{T}=zero(L1L2{T}), alphaH::L1L2{T}=zero(L1L2{T})) where T
-	W, HT = initialize_nmf(X, k)
+function nmf(::Type{T}, X::AbstractMatrix{S}, k::Int; tol=1e-4, maxiter=200, alphaW::L1L2{T}=zero(L1L2{T}), alphaH::L1L2{T}=zero(L1L2{T})) where {T,S}
+	W, HT = initialize_nmf(Float64, X, k)
 	converged = nmf!(W, HT, X, k; tol=tol, maxiter=maxiter, alphaW=alphaW, alphaH=alphaH)
 
 	converged || @warn "failed to converge in $maxiter iterations"
 	W, HT
+end
+
+function nmf(X::AbstractMatrix{S}, k::Int; tol=1e-4, maxiter=200, alphaW::L1L2{Float64}=zero(L1L2{Float64}), alphaH::L1L2{Float64}=zero(L1L2{Float64})) where S
+  nmf(Float64, X, k; tol=tol, maxiter=maxiter, alphaW=alphaW, alphaH=alphaH)
 end
