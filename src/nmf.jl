@@ -24,7 +24,7 @@ function updateHALS!(grad::AbstractVector{T}, W::AbstractMatrix{T}, X::AbstractM
 
 	if alpha[2] > 0.0
 		@inbounds for i in 1:k
-			HHT[i,i] += alpha[2]
+			HHT[i,i] += alpha.l2
 		end
 	end
 
@@ -33,7 +33,7 @@ function updateHALS!(grad::AbstractVector{T}, W::AbstractMatrix{T}, X::AbstractM
 
 #		grad = X*HT[:,j] - W * HHT[:,j]
 		mul!(grad, X, HT[:,j])
-		grad .-= alpha[1]
+		grad .-= alpha.l1
 		mul!(grad, W, view(HHT,:,j), -1.0, 1.0)
 
 		w = @view W[:,j]

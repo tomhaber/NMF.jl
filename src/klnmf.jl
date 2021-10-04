@@ -1,8 +1,8 @@
 import SparseArrays: SparseMatrixCSC, getcolptr, nonzeros, rowvals, nzrange
 
 function reg_objective(HT::AbstractMatrix{T}, W::AbstractMatrix{T}, alphaH::L1L2{T}, alphaW::L1L2{T}) where T
-	return alphaH[1] * norm(HT,1) + alphaH[2] * norm(HT,2) +
-		alphaW[1] * norm(W,1) + alphaW[2] * norm(W,2)
+	return alphaH.l1 * norm(HT,1) + alphaH.l2 * norm(HT,2) +
+		alphaW.l1 * norm(W,1) + alphaW.l2 * norm(W,2)
 end
 
 function objective(X::SparseMatrixCSC{S}, HT::AbstractMatrix{T}, W::AbstractMatrix{T}, alphaH::L1L2{T}, alphaW::L1L2{T}) where {T,S}
@@ -71,7 +71,7 @@ function updateH!(gh::Matrix{T}, rs::Matrix{T}, q::Int, X::SparseMatrixCSC{S}, H
 	nzv = nonzeros(X)
 	rv = rowvals(X)
 
-	gh[:,1] .= rs[q, 2] + alphaH[1]*n
+	gh[:,1] .= rs[q, 2] + alphaH.l1*n
 	gh[:,2] .= zero(T)
 
 	@inbounds for j = 1:n
@@ -88,7 +88,7 @@ function updateH!(gh::Matrix{T}, rs::Matrix{T}, q::Int, X::SparseMatrixCSC{S}, H
 	rowsum_Hq = zero(T)
 	converged = true
 	@inbounds for i = 1:m
-		delta_i = -(gh[i,1] + 2n*alphaH[2]*HT[q,i]) / (gh[i,2] + 2n*alphaH[2])
+		delta_i = -(gh[i,1] + 2n*alphaH.l2*HT[q,i]) / (gh[i,2] + 2n*alphaH.l2)
 		newH = clamp(HT[q,i] + delta_i, eps(), Inf)
 		converged &= (abs(newH - HT[q,i]) < abs(HT[q,i])*0.5)
 		HT[q,i] = newH
@@ -107,7 +107,7 @@ function updateW!(rs::Matrix{T}, q::Int, X::SparseMatrixCSC{S}, HT::AbstractMatr
 	rv = rowvals(X)
 
 	rowsum_Wq = zero(T)
-	s = rs[q, 1] + alphaW[1]*m
+	s = rs[q, 1] + alphaW.l1*m
 
 	converged = true
 	@inbounds for j = 1:n
@@ -121,7 +121,7 @@ function updateW!(rs::Matrix{T}, q::Int, X::SparseMatrixCSC{S}, HT::AbstractMatr
 			tmp_h += (v / WHij^2) * HT[q,i]^2
 		end
 
-		delta_j = -(tmp_g + s + 2m*alphaW[2]*W[q,j]) / (tmp_h + 2m*alphaW[2])
+		delta_j = -(tmp_g + s + 2m*alphaW.l2*W[q,j]) / (tmp_h + 2m*alphaW.l2)
 		newW = clamp(W[q,j] + delta_j, eps(), Inf)
 		converged &= (abs(newW - W[q,j]) < abs(W[q,j])*0.5)
 		W[q,j] = newW

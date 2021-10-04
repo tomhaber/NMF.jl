@@ -3,8 +3,13 @@ module NMF
 	import Random: rand!, rand, randn!, seed!
 	import LinearAlgebra: axpby!, axpy!, mul!, dot, norm
 
-	L1L2{T <: Real} = Tuple{T, T}
-	Base.zero(::Type{L1L2{T}}) where {T <: Real} = (zero(T), zero(T))
+	struct L1L2{T <: Real}
+		l1::T
+		l2::T
+	end
+
+	Base.zero(::Type{L1L2{T}}) where {T <: Real} = L1L2{T}(zero(T), zero(T))
+	Base.collect(x::L1L2) = (x.l1, x.l2)
 
 	function projected_grad_norm(w::AbstractVector{T}, g::AbstractVector{T}) where T
 		norm = zero(T)
