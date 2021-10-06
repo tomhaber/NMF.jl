@@ -59,6 +59,5 @@ module NMF
     export initialize, objective
     export normalize, normalize!
     export nmf, nmf!
-    export klnmf, klnmf!
     export L1L2, L2NMF, KLNMF, RegularizedNMF
 end
