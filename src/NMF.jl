@@ -45,9 +45,8 @@ module NMF
     prefer_rowmajor(::Type{<:Measure}) = false # fallback
     prefer_rowmajor(::Type{RegularizedNMF{M}}) where M = prefer_rowmajor(M)
 
-    function nmf(rng::AbstractRNG, meas::Measure, X::AbstractMatrix{S}, k::Int;
-            dtype::Type=Float64, maxiter=200, kw...) where {S}
-        HT, W = initialize(meas, X, k, dtype=dtype)
+    function nmf(rng::AbstractRNG, meas::Measure, X::AbstractMatrix, k::Int; dtype::Type=Float64, maxiter=200, kw...)
+        HT, W = initialize(rng, meas, X, k, dtype=dtype)
         converged = nmf!(meas, HT, W, X; maxiter=maxiter, kw...)
 
         converged || @warn "failed to converge in $maxiter iterations"
