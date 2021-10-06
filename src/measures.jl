@@ -62,13 +62,13 @@ function objective(::L2NMF, X::SparseMatrixCSC{S}, HT::AbstractMatrix{T}, W::Abs
     obj
 end
 
-function objective(::KLNMF, X::AbstractMatrix{S}, HT::AbstractMatrix{T}, W::AbstractMatrix{T}) where {T, S}
+function objective_klnmf(X::AbstractMatrix{S}, HT::AbstractMatrix{T}, W::AbstractMatrix{T}) where {T, S}
     WH = HT'*W
     mask = X .> 0
-    sum(@. X[mask] * log(X[mask] / (WH[mask] + eps()))) - sum(X) + sum(WH)
+    sum(@. X[mask] * log(X[mask] / (WH[mask] + eps()))) - sum(X)
 end
 
-function objective(::KLNMF, X::SparseMatrixCSC{S}, HT::AbstractMatrix{T}, W::AbstractMatrix{T}) where {T, S}
+function objective_klnmf(X::SparseMatrixCSC{S}, HT::AbstractMatrix{T}, W::AbstractMatrix{T}) where {T, S}
     m,n = size(X)
 
     nzv = nonzeros(X)
@@ -79,19 +79,29 @@ function objective(::KLNMF, X::SparseMatrixCSC{S}, HT::AbstractMatrix{T}, W::Abs
     @inbounds for j in 1:n
         next = getcolptr(X)[j+1]
 
+        Wj = view(W, :, j)
         for i in 1:m
-            HTi = view(HT, :, i)
-            Wj = view(W, :, j)
-            WHij = dot(HTi, Wj)
-
-            obj += if idx < next && rv[idx] == i
+            if idx < next && rv[idx] == i
+                HTi = view(HT, :, i)
+                WHij = dot(HTi, Wj)
                 v = nzv[idx]
                 idx += 1
-                v*log(v/(WHij + eps())) - v + WHij
-            else
-                WHij
+                obj += v*log(v/(WHij + eps())) - v
             end
         end
     end
     obj
+end
+
+function objective(::KLNMF, X::AbstractMatrix, HT::AbstractMatrix{T}, W::AbstractMatrix{T}, rs::Matrix{T}) where {T}
+    dot(view(rs, :, 1), view(rs, :, 2)) + objective_klnmf(X, HT, W)
+end
+
+function objective(m::KLNMF, X::AbstractMatrix, HT::AbstractMatrix{T}, W::AbstractMatrix{T}) where {T}
+    rowsums = calc_rowsums(HT, W)
+    objective(m, X, HT, W, rowsums)
+end
+
+function objective(m::Measure, X::AbstractMatrix, HT::AbstractMatrix{T}, W::AbstractMatrix{T}, rowsums::Matrix{T}) where {T}
+    objective(m, X, HT, W)
 end

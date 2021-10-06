@@ -34,6 +34,7 @@ module NMF
         end
     end
 
+    include("utils.jl")
     include("initialization.jl")
     include("measures.jl")
     include("normalize.jl")

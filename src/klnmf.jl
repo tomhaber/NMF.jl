@@ -132,20 +132,6 @@ function updateW!(rs::Matrix{T}, q::Int, X::SparseMatrixCSC{S}, HT::AbstractMatr
 	converged
 end
 
-function calc_rowsums!(rs::Matrix{T}, HT::AbstractMatrix{T}, W::AbstractMatrix{T}) where T
-	sum!(view(rs, :, 1), HT)
-	sum!(view(rs, :, 2), W)
-	rs
-end
-
-function calc_rowsums(HT::AbstractMatrix{T}, W::AbstractMatrix{T}) where T
-	k = size(HT, 1)
-	@assert size(W,1) == k
-
-	rs = Matrix{T}(undef, (k, 2))
-	calc_rowsums!(rs, HT, W)
-end
-
 function klnmf!(HT::AbstractMatrix{T}, W::AbstractMatrix{T}, X::AbstractMatrix{S};
 		tol=1e-4, maxiter=200, maxinner=2, alphaH::L1L2{T}=zero(L1L2{T}), alphaW::L1L2{T}=zero(L1L2{T})) where {T,S}
 	m, n = size(X)
