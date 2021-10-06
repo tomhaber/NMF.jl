@@ -36,10 +36,12 @@ module NMF
 
     include("initialization.jl")
     include("measures.jl")
+    include("normalize.jl")
     include("nmf.jl")
     include("klnmf.jl")
 
     export initialize, objective
+    export normalize, normalize!
     export nmf, nmf!
     export klnmf, klnmf!
     export L1L2, L2NMF, KLNMF, RegularizedNMF
