@@ -78,7 +78,7 @@ function nmf!(meas::Union{RegularizedNMF{L2NMF}, L2NMF}, HT::AbstractMatrix{T}, 
 
         obj = objective(meas, X, HT, W)
         converged = (abs(obj - prev_obj) < rtol * abs(prev_obj)) || (abs(obj - prev_obj) < atol)
-        verbose && println("iteration $iter: objective changed from $prev_obj to $obj ($(abs(obj - prev_obj)/abs(prev_obj)))")
+        verbose && @info "iteration $iter: objective changed from $prev_obj to $obj ($(abs(obj - prev_obj)/abs(prev_obj)))"
         prev_obj = obj
         iter += 1
     end
