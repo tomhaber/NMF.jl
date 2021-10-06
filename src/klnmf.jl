@@ -33,6 +33,14 @@ function updateH!(gh::Matrix{T}, rs::Matrix{T}, q::Int, X::SparseMatrixCSC{S}, H
 	converged
 end
 
+function updateH!(::KLNMF, gh::Matrix{T}, rs::Matrix{T}, q::Int, X::SparseMatrixCSC{S}, HT::AbstractMatrix{T}, W::AbstractMatrix{T}) where {T,S}
+	updateH!(gh, rs, q, X, HT, W, zero(L1L2{T}))
+end
+
+function updateH!(m::RegularizedNMF{KLNMF}, gh::Matrix{T}, rs::Matrix{T}, q::Int, X::SparseMatrixCSC{S}, HT::AbstractMatrix{T}, W::AbstractMatrix{T}) where {T,S}
+	updateH!(gh, rs, q, X, HT, W, m.alphaH)
+end
+
 function updateW!(rs::Matrix{T}, q::Int, X::SparseMatrixCSC{S}, HT::AbstractMatrix{T}, W::AbstractMatrix{T}, alphaW::L1L2{T}) where {T,S}
 	m,n = size(X)
 	k = size(W,2)
@@ -66,32 +74,46 @@ function updateW!(rs::Matrix{T}, q::Int, X::SparseMatrixCSC{S}, HT::AbstractMatr
 	converged
 end
 
-function klnmf!(HT::AbstractMatrix{T}, W::AbstractMatrix{T}, X::AbstractMatrix{S};
-		tol=1e-4, maxiter=200, maxinner=2, alphaH::L1L2{T}=zero(L1L2{T}), alphaW::L1L2{T}=zero(L1L2{T})) where {T,S}
+function updateW!(::KLNMF, rs::Matrix{T}, q::Int, X::SparseMatrixCSC{S}, HT::AbstractMatrix{T}, W::AbstractMatrix{T}) where {T,S}
+	updateW!(rs, q, X, HT, W, zero(L1L2{T}))
+end
+
+function updateW!(m::RegularizedNMF{KLNMF}, rs::Matrix{T}, q::Int, X::SparseMatrixCSC{S}, HT::AbstractMatrix{T}, W::AbstractMatrix{T}) where {T,S}
+	updateW!(rs, q, X, HT, W, m.alphaW)
+end
+
+function nmf!(meas::Union{KLNMF, RegularizedNMF{KLNMF}},
+		HT::AbstractMatrix{T}, W::AbstractMatrix{T}, X::AbstractMatrix{S};
+		atol=1e-6, rtol=1e-4, maxiter=200, maxinner=2, verbose=true) where {T,S}
 	m, n = size(X)
+	@assert size(HT,2) == m
+	@assert size(W,2) == n
 	k = size(HT,1)
+	@assert size(W,1) == k
+
 	gh = Matrix{T}(undef, m, 2)
 	rs = calc_rowsums(HT, W)
 
-	prev_obj = objective(X, HT, W, alphaH, alphaW)
+	prev_obj = objective(meas, X, HT, W, rs)
 
 	iter = 1
 	converged = false
 	while ! converged && iter < maxiter
 		@inbounds for q in 1:k
 			for inner in 1:maxinner
-				updateH!(gh, rs, q, X, HT, W, alphaH) && break
+				updateH!(meas, gh, rs, q, X, HT, W) && break
 			end
 		end
 
 		@inbounds for q in 1:k
 			for inner in 1:maxinner
-				updateW!(rs, q, X, HT, W, alphaW) && break
+				updateW!(meas, rs, q, X, HT, W) && break
 			end
 		end
 
-		obj = objective(X, HT, W, alphaH, alphaW)
-		converged = abs(obj - prev_obj) < tol * abs(prev_obj)
+		obj = objective(meas, X, HT, W, rs)
+		converged = (abs(obj - prev_obj) < rtol * abs(prev_obj)) || (abs(obj - prev_obj) < atol)
+		verbose && println("objective changed from $prev_obj to $obj")
 		prev_obj = obj
 		iter += 1
 	end
@@ -99,15 +121,4 @@ function klnmf!(HT::AbstractMatrix{T}, W::AbstractMatrix{T}, X::AbstractMatrix{S
 	converged
 end
 
-function klnmf(X::AbstractMatrix{S}, k::Int;
-		tol=1e-4, maxiter=200, maxinner=2, alphaH::L1L2{Float64}=zero(L1L2{Float64}), alphaW::L1L2{Float64}=zero(L1L2{Float64})) where {S}
-	m, n = size(X)
-	avg = sqrt(mean(X) / k)
-	HT = abs.(avg * randn(Float64, k, m))
-	W = abs.(avg * randn(Float64, k, n))
-
-	converged = klnmf!(HT, W, X; tol=tol, maxiter=maxiter, maxinner=maxinner, alphaH=alphaH, alphaW=alphaW)
-
-	converged || @warn "failed to converge in $maxiter iterations"
-	HT, W
-end
+prefer_rowmajor(::Type{KLNMF}) = true
