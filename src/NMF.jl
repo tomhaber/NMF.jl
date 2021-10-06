@@ -1,6 +1,6 @@
 module NMF
     import Statistics: mean
-    import Random: rand!, rand, randn!, seed!
+    import Random: AbstractRNG, default_rng, rand!, rand, randn!
     import LinearAlgebra: axpby!, axpy!, mul!, dot, norm
     import SparseArrays: SparseMatrixCSC, getcolptr, nonzeros, rowvals, nzrange
 
@@ -35,11 +35,26 @@ module NMF
     end
 
     include("utils.jl")
-    include("initialization.jl")
     include("measures.jl")
+    include("initialization.jl")
     include("normalize.jl")
     include("nmf.jl")
     include("klnmf.jl")
+
+    prefer_rowmajor(meas::Measure) = prefer_rowmajor(typeof(meas))
+    prefer_rowmajor(::Type{<:Measure}) = false # fallback
+    prefer_rowmajor(::Type{RegularizedNMF{M}}) where M = prefer_rowmajor(M)
+
+    function nmf(rng::AbstractRNG, meas::Measure, X::AbstractMatrix{S}, k::Int;
+            dtype::Type=Float64, maxiter=200, kw...) where {S}
+        HT, W = initialize(meas, X, k, dtype=dtype)
+        converged = nmf!(meas, HT, W, X; maxiter=maxiter, kw...)
+
+        converged || @warn "failed to converge in $maxiter iterations"
+        HT, W
+    end
+
+    nmf(meas::Measure, X::AbstractMatrix, k::Int; kw...) = nmf(default_rng(), meas, X, k; kw...)
 
     export initialize, objective
     export normalize, normalize!
