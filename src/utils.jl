@@ -20,6 +20,14 @@ end
     n
 end
 
+function validate_input(HT::AbstractMatrix, W::AbstractMatrix, X::AbstractMatrix)
+    m, n = size(X)
+    @assert size(HT, 2) ==  m
+    k = size(HT,1)
+    @assert size(W) == (k, n)
+    m, n, k
+end
+
 function projected_grad_norm(w::AbstractVector{T}, g::AbstractVector{T}) where T
     norm = zero(T)
 

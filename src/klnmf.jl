@@ -85,11 +85,7 @@ end
 function nmf!(meas::Union{KLNMF, RegularizedNMF{KLNMF}},
         HT::AbstractMatrix{T}, W::AbstractMatrix{T}, X::AbstractMatrix{S};
         atol=1e-6, rtol=1e-4, maxiter=200, maxinner=2, verbose=true) where {T,S}
-    m, n = size(X)
-    @assert size(HT,2) == m
-    @assert size(W,2) == n
-    k = size(HT,1)
-    @assert size(W,1) == k
+    m, n, k = validate_input(HT, W, X)
 
     gh = Matrix{T}(undef, m, 2)
     rs = calc_rowsums(HT, W)

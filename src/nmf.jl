@@ -46,14 +46,9 @@ end
 
 # WT[:,j] - (XT * H[:,j] - WT * HTH[:,]) / HTH[j,j]
 # H[:,j] - (X * WT[:,j] - H * WWT[:,j]) / WWT[j,j]
-
 function nmf!(meas::Union{RegularizedNMF{L2NMF}, L2NMF}, HT::AbstractMatrix{T}, W::AbstractMatrix{T}, X::AbstractMatrix{S};
         atol::Real=1e-6, rtol::Real=1e-4, maxiter::Int=200, verbose::Bool=false) where {T, S}
-    m, n = size(X)
-    @assert size(HT,2) == m
-    @assert size(W,2) == n
-    k = size(HT,1)
-    @assert size(W,1) == k
+    m, n, k = validate_input(HT, W, X)
 
     HTH = WWT = Matrix{T}(undef, k ,k)
     gH = Vector{T}(undef, m)
