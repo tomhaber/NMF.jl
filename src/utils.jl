@@ -12,6 +12,36 @@ function calc_rowsums(HT::AbstractMatrix{T}, W::AbstractMatrix{T}) where T
     calc_rowsums!(rs, HT, W)
 end
 
+@inline function assert_allequal_size(X)
+    n = size(X[1], 2)
+    @inbounds for i in 2:length(X)
+        @assert size(X[i], 2) == n "not all matrices have equal size ($(size(X[i], 2)) <=> $n)"
+    end
+    n
+end
+
+function projected_grad_norm(w::AbstractVector{T}, g::AbstractVector{T}) where T
+    norm = zero(T)
+
+    @inbounds for i = 1:length(w)
+        pg = if iszero(w[i])
+            min(zero(T), g[i])
+        else
+            g[i]
+        end
+
+        norm += pg^2
+    end
+
+    norm
+end
+
+function clamp_zero!(w::AbstractVector{T}) where T
+    @inbounds for i = 1:length(w)
+        w[i] = max(w[i], zero(T))
+    end
+end
+
 function check_zeroinflation(X::SparseMatrixCSC{S}, HT::AbstractMatrix{T}, W::AbstractMatrix{T}) where {T,S}
     m,n = size(X)
 
