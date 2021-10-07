@@ -1,103 +1,89 @@
 # Cichocki, Andrzej, and Phan, Anh-Huy. "Fast local algorithms for large scale nonnegative matrix and tensor factorizations.",
 # IEICE transactions on fundamentals of electronics, communications and computer sciences 92.3: 708-721, 2009.
 
-function initialize_nmf(::Type{T}, X::AbstractMatrix, k::Int) where T
-	m,n = size(X)
+function updateHALS!(grad::AbstractVector{T}, WT::AbstractMatrix{T}, XT::AbstractMatrix{S}, H::AbstractMatrix{T}, HTH::AbstractMatrix{T}, alpha::L1L2{T}) where {T, S}
+    n, k = size(WT)
+    norm = zero(T)
 
-	avg = sqrt(mean(X) / k)
-	W = abs.(avg * randn(T, m, k))
-	HT = abs.(avg * randn(T, n, k))
+    if alpha.l2 > 0.0
+        @inbounds for i in 1:k
+            HTH[i,i] += alpha.l2
+        end
+    end
 
-#	for i in 1:k
-#		x = @view W[:,i]
-#		x ./= sum(x)
-#	end
+    @inbounds for j in 1:k
+        hess = max(1e-10, HTH[j,j])
 
-	W, HT
+#		grad = XT*HT[:,j] - W * HHT[:,j]
+        mul!(grad, XT, H[:,j])
+        grad .-= alpha.l1
+        mul!(grad, WT, view(HTH,:,j), -1.0, 1.0)
+
+        w = @view WT[:,j]
+        norm += projected_grad_norm(w, grad)
+        axpy!(1/hess, grad, w)
+        clamp_zero!(w)
+    end
+
+    norm
 end
 
-#objective(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix) = norm(X .- W*H)
-
-function updateHALS!(grad::AbstractVector{T}, W::AbstractMatrix{T}, X::AbstractMatrix{S}, HT::AbstractMatrix{T}, HHT::AbstractMatrix{T}, alpha::L1L2{T}) where {T, S}
-	n, k = size(W)
-	norm = zero(T)
-
-	if alpha[2] > 0.0
-		@inbounds for i in 1:k
-			HHT[i,i] += alpha.l2
-		end
-	end
-
-	@inbounds for j in 1:k
-		hess = max(1e-10, HHT[j,j])
-
-#		grad = X*HT[:,j] - W * HHT[:,j]
-		mul!(grad, X, HT[:,j])
-		grad .-= alpha.l1
-		mul!(grad, W, view(HHT,:,j), -1.0, 1.0)
-
-		w = @view W[:,j]
-		norm += projected_grad_norm(w, grad)
-		axpy!(1/hess, grad, w)
-		clamp_zero!(w)
-	end
-
-	norm
+function updateW!(::L2NMF, grad::AbstractVector{T}, WT::AbstractMatrix{T}, XT::AbstractMatrix{S}, H::AbstractMatrix{T}, HTH::AbstractMatrix{T}) where {T,S}
+    updateHALS!(grad, WT, XT, H, HTH, zero(L1L2{T}))
 end
 
-# W[:,j] - (X*HT[:,j] - W * HHT[:,]) / HHT[j,j]
-# HT[:,j] - (XT * W[:,j] - HT * WTW[:,j]) / WTW[j,j]
-
-function nmf!(W::Matrix{T}, HT::Matrix{T}, X::AbstractMatrix{S}, k::Int;
-		 tol=1e-4, maxiter=200, alphaW::L1L2{T}=zero(L1L2{T}), alphaH::L1L2{T}=zero(L1L2{T})) where {T, S}
-	m, n = size(X)
-	WTW = HHT = Matrix{T}(undef, k ,k)
-	gW = Vector{T}(undef, m)
-	gH = Vector{T}(undef, n)
-
-	H = transpose(HT)
-	WT = transpose(W)
-	XT = transpose(X)
-
-	norm_pg0 = 0.0
-	norm_pg_prev = Inf
-
-	iter = 1
-	converged = false
-	while ! converged && iter < maxiter
-		norm_pg = zero(T)
-
-		# updateW
-		mul!(HHT, H, HT)
-		norm_pg += updateHALS!(gW, W, X, HT, HHT, alphaW)
-
-		# updateH
-		mul!(WTW, WT, W)
-		norm_pg += updateHALS!(gH, HT, XT, W, WTW, alphaH)
-
-		if iter == 1
-			norm_pg0 = norm_pg
-		else
-			norm_pg = norm_pg / norm_pg0
-		end
-
-		converged = abs(norm_pg - norm_pg_prev) < tol
-		norm_pg_prev = norm_pg
-
-		iter += 1
-	end
-
-	converged
+function updateW!(meas::RegularizedNMF{L2NMF}, grad::AbstractVector{T}, WT::AbstractMatrix{T}, XT::AbstractMatrix{S}, H::AbstractMatrix{T}, HTH::AbstractMatrix{T}) where {T,S}
+    updateHALS!(grad, WT, XT, H, HTH, meas.alphaW)
 end
 
-function nmf(::Type{T}, X::AbstractMatrix{S}, k::Int; tol=1e-4, maxiter=200, alphaW::L1L2{T}=zero(L1L2{T}), alphaH::L1L2{T}=zero(L1L2{T})) where {T,S}
-	W, HT = initialize_nmf(Float64, X, k)
-	converged = nmf!(W, HT, X, k; tol=tol, maxiter=maxiter, alphaW=alphaW, alphaH=alphaH)
-
-	converged || @warn "failed to converge in $maxiter iterations"
-	W, HT
+function updateH!(::L2NMF, grad::AbstractVector{T}, H::AbstractMatrix{T}, X::AbstractMatrix{S}, WT::AbstractMatrix{T}, WWT::AbstractMatrix{T}) where {T,S}
+    updateHALS!(grad, H, X, WT, WWT, zero(L1L2{T}))
 end
 
-function nmf(X::AbstractMatrix{S}, k::Int; tol=1e-4, maxiter=200, alphaW::L1L2{Float64}=zero(L1L2{Float64}), alphaH::L1L2{Float64}=zero(L1L2{Float64})) where S
-  nmf(Float64, X, k; tol=tol, maxiter=maxiter, alphaW=alphaW, alphaH=alphaH)
+function updateH!(meas::RegularizedNMF{L2NMF}, grad::AbstractVector{T}, H::AbstractMatrix{T}, X::AbstractMatrix{S}, WT::AbstractMatrix{T}, WWT::AbstractMatrix{T}) where {T,S}
+    updateHALS!(grad, H, X, WT, WWT, meas.alphaH)
 end
+
+# WT[:,j] - (XT * H[:,j] - WT * HTH[:,]) / HTH[j,j]
+# H[:,j] - (X * WT[:,j] - H * WWT[:,j]) / WWT[j,j]
+
+function nmf!(meas::Union{RegularizedNMF{L2NMF}, L2NMF}, HT::AbstractMatrix{T}, W::AbstractMatrix{T}, X::AbstractMatrix{S};
+        atol::Real=1e-6, rtol::Real=1e-4, maxiter::Int=200, verbose::Bool=false) where {T, S}
+    m, n = size(X)
+    @assert size(HT,2) == m
+    @assert size(W,2) == n
+    k = size(HT,1)
+    @assert size(W,1) == k
+
+    HTH = WWT = Matrix{T}(undef, k ,k)
+    gH = Vector{T}(undef, m)
+    gW = Vector{T}(undef, n)
+
+    WT = transpose(W)
+    H = transpose(HT)
+    XT = transpose(X)
+
+    prev_obj = objective(meas, X, HT, W)
+
+    iter = 1
+    converged = false
+    while ! converged && iter < maxiter
+        # updateH
+        mul!(WWT, W, WT)
+        updateH!(meas, gH, H, X, WT, WWT)
+
+        # updateW
+        mul!(HTH, HT, H)
+        updateW!(meas, gW, WT, XT, H, HTH)
+
+        obj = objective(meas, X, HT, W)
+        converged = (abs(obj - prev_obj) < rtol * abs(prev_obj)) || (abs(obj - prev_obj) < atol)
+        verbose && @info "iteration $iter: objective changed from $prev_obj to $obj ($(abs(obj - prev_obj)/abs(prev_obj)))"
+        prev_obj = obj
+        iter += 1
+    end
+
+    converged
+end
+
+prefer_rowmajor(::Type{L2NMF}) = false
