@@ -75,19 +75,14 @@ function objective_klnmf(X::SparseMatrixCSC{S}, HT::AbstractMatrix{T}, W::Abstra
     rv = rowvals(X)
 
     obj = zero(T)
-    idx = getcolptr(X)[1]
     @inbounds for j in 1:n
-        next = getcolptr(X)[j+1]
-
         Wj = view(W, :, j)
-        for i in 1:m
-            if idx < next && rv[idx] == i
-                HTi = view(HT, :, i)
-                WHij = dot(HTi, Wj)
-                v = nzv[idx]
-                idx += 1
-                obj += v*log(v/(WHij + eps())) - v
-            end
+        for idx in nzrange(X,j)
+            v, i = nzv[idx], rv[idx]
+            HTi = view(HT, :, i)
+            WHij = dot(HTi, Wj)
+            idx += 1
+            obj += v*log(v/(WHij + eps())) - v
         end
     end
     obj
